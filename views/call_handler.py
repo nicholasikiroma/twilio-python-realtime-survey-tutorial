@@ -1,9 +1,15 @@
 from flask import Blueprint, url_for, request
 from twilio.twiml.voice_response import VoiceResponse, Gather
 
-from ..utils import twiml_response, return_home, goodbye, survey_instructions
+from ..utils import twiml_response, return_home, goodbye, survey_instructions, Question
 
 ivr_phone_tree = Blueprint("phone_tree", __name__)
+
+QUESTIONS = [
+    Question("Do you use Facebook?", "phone_tree.answer_handler", 1),
+    Question("How often do you eat?", "phone_tree.answer_handler", 2),
+    Question("Do you like to dance?", "phone_tree.answer_handler"),
+]
 
 
 @ivr_phone_tree.route("/welcome", methods=["POST"])
@@ -36,43 +42,60 @@ def root_menu():
     return return_home()
 
 
-@ivr_phone_tree.route("/questions/1", methods=["POST"])
-def question_one():
-    """Questions"""
-    # How often do you use our products?
+@ivr_phone_tree.route("/questions/<int:question_index>", methods=["POST"])
+def questions_handler(question_index):
+    """Generic view function to handle questions"""
     res = VoiceResponse()
-    with res.gather(
-        input="speech", action=url_for("phone_tree.question_one_handler"), method="POST"
-    ) as gather:
-        gather.say(message="How often do you use Facebook?", voice="Polly.Ama", loop=2)
 
-    res.append(gather)
+    if 0 <= question_index < len(QUESTIONS):
+        current_question = QUESTIONS[question_index]
+
+        gather = Gather(
+            input="speech",
+            action=url_for(
+                current_question.handler,
+                question_index=0
+                if question_index == 0
+                else current_question.next_question,
+            ),
+            method="POST",
+        )
+        gather.say(current_question.text)
+        res.append(gather)
+
+    else:
+        return return_home()
+
     return twiml_response(res)
 
 
-@ivr_phone_tree.route("/questions/handler", methods=["POST"])
-def question_one_handler():
-    """Handler for question one"""
+@ivr_phone_tree.route("/answers/<int:question_index>", methods=["POST"])
+def answer_handler(question_index):
+    """Handler for answers to questions"""
     res = VoiceResponse()
-    transcribed_text = request.form["SpeechResult"]
-    print("Transcribed Text========>", transcribed_text)  # store response
-    res.say("Next Question")
-    res.redirect(url_for("phone_tree.question_two"), method="POST")
+
+    if 0 <= question_index < len(QUESTIONS):
+        current_question = QUESTIONS[question_index]
+        transcribed_text = request.form["SpeechResult"]
+        print(
+            "Transcribed Text for question {}: {}".format(
+                question_index, transcribed_text
+            )
+        )
+
+        if current_question.next_question is not None:
+            res.say("Next Question")
+            res.redirect(
+                url_for(
+                    "phone_tree.questions_handler",
+                    question_index=current_question.next_question,
+                ),
+                method="POST",
+            )
+        else:
+            res.say("Thank you for completing the survey. Goodbye!")
+            res.hangup()
+    else:
+        return return_home()
+
     return twiml_response(res)
-
-
-@ivr_phone_tree.route("/questions/2", methods=["POST"])
-def question_two():
-    """Questions"""
-    # Which features are most valuable to you
-    res = VoiceResponse()
-    res.say("Thank you for calling")
-    res.hangup()
-    return twiml_response(res)
-
-
-@ivr_phone_tree.route("/questions/3", methods=["POST"])
-def question_three():
-    """Questions"""
-    # How would you compare our products to our competitors’?
-    return

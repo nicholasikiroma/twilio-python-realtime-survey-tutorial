@@ -1,4 +1,5 @@
-from flask import Response, url_for, redirect
+from flask import Response, url_for
+from flask.testing import FlaskClient
 from twilio.twiml.voice_response import VoiceResponse, Gather
 
 
@@ -29,15 +30,7 @@ def goodbye(response):
 
 def survey_instructions(response):
     response.say("Please say your answer after each question")
-    return question_one(response)
-
-
-def question_one(response):
-    gather = Gather(
-        input="speech", action=url_for("phone_tree.question_one_handler"), method="POST"
+    response.redirect(
+        url_for("phone_tree.questions_handler", question_index=0), method="POST"
     )
-    gather.say("Do you use facebook?")
-    response.append(gather)
-    response.say("We didn't receive any input. Goodbye!")
-    response.append(gather)
-    return twiml_response(response)
+    return VoiceResponse()
