@@ -1,1 +1,1 @@
-from incoming_calls import ivr_phone_tree
+from .call_handler import ivr_phone_tree

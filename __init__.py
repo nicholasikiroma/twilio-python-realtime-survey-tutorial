@@ -1,6 +1,6 @@
 from flask import Flask
 from dotenv import load_dotenv
-from views import ivr_phone_tree
+from .views import ivr_phone_tree
 
 
 def create_app():
