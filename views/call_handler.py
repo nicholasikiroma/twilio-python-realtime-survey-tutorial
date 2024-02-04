@@ -78,8 +78,9 @@ def answer_handler(question_index):
         current_question = QUESTIONS[question_index]
         transcribed_text = request.form["SpeechResult"]
         print(
-            "Transcribed Text for question {}: {}".format(
-                question_index, transcribed_text
+            "Transcribed Text for question {}: {}".format(  # Transcribed text can be stored in database or processed in some other way
+                question_index,
+                transcribed_text,
             )
         )
 

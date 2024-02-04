@@ -1,6 +1,5 @@
 from flask import Response, url_for
-from flask.testing import FlaskClient
-from twilio.twiml.voice_response import VoiceResponse, Gather
+from twilio.twiml.voice_response import VoiceResponse
 
 
 def twiml_response(response):
