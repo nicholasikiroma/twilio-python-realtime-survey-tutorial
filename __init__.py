@@ -1,5 +1,5 @@
 from flask import Flask
-from .views import ivr_phone_tree
+from .routes import ivr_phone_tree
 
 
 def create_app():
