@@ -1,5 +1,9 @@
+import os
 from flask import Response, url_for
 from twilio.twiml.voice_response import VoiceResponse
+from twilio.rest import Client
+
+from ..config import account_sid, auth_token
 
 
 def twiml_response(response: VoiceResponse) -> Response:
@@ -38,31 +42,46 @@ def goodbye(res: VoiceResponse) -> VoiceResponse:
         "Thank you for completing the survey. Have a pleasant day.",
     )
 
-    # Optional: Add more robust call termination
     res.pause(length=1)
     res.hangup()
 
     # Attempt to stop recording
-    res.record(
-        "",
-        action=url_for("phone_tree.stop_recording"),
-        method="POST",
-        trim="trim-silence",
-    )
+    # res.record(
+    #     action=url_for("phone_tree.stop_recording"),
+    #     method="POST",
+    #     trim="trim-silence",
+    # )
 
     return res
 
 
-def start_call_recording() -> Response:
+def start_call_recording(call_sid: str):
     """
     Initiates call recording
 
     Returns:
-        Response: TwiML response for starting recording
+        Response: Call context
     """
-    res = VoiceResponse()
-    res.redirect(url_for("phone_tree.record"), method="POST")
-    return twiml_response(res)
+    try:
+        client = Client(account_sid, auth_token)
+
+        ongoing_call = client.calls(call_sid)
+
+        recording = ongoing_call.recordings.create(
+            recording_status_callback_event="completed",
+            recording_status_callback=url_for(
+                "phone_tree.stop_recording", _external=True
+            ),
+            recording_status_callback_method="GET",
+        )
+        return recording
+
+    except Exception as e:
+        print(f"Error creating recording instance: {e}")
+        # Fallback response
+        fallback_res = VoiceResponse()
+        fallback_res.say("Sorry, there was a system error.")
+        fallback_res.hangup()
 
 
 def return_home() -> Response:
@@ -76,3 +95,13 @@ def return_home() -> Response:
     res.say("Sorry, something went wrong. Returning to main menu.")
     res.redirect(url_for("phone_tree.index"), method="POST")
     return twiml_response(res)
+
+
+def process_survey_results(session):
+    """
+    Optional method to process and store survey results
+    In a real-world scenario, this would integrate with a database
+    """
+    print(f"Survey Category: {session.current_category}")
+    for question, response in session.responses.items():
+        print(f"Q: {question}\nA: {response}\n")

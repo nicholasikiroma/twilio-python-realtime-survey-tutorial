@@ -1,7 +1,15 @@
 from flask import Blueprint, url_for, request
 from twilio.twiml.voice_response import VoiceResponse, Gather
 
-from ..utils import twiml_response, goodbye, start_call_recording, SurveySession
+
+from ..utils import (
+    twiml_response,
+    goodbye,
+    start_call_recording,
+    SurveySession,
+    RecordingHandler,
+    process_survey_results,
+)
 
 ivr_phone_tree = Blueprint("phone_tree", __name__)
 
@@ -12,12 +20,14 @@ survey_sessions = {}
 
 @ivr_phone_tree.route("/welcome", methods=["POST"])
 def index():
-    """Welcome screen with category selection"""
+    """Welcome message with category selection"""
     res = VoiceResponse()
 
     # Create gather with category options
     gather = Gather(
-        num_digits=1, action=url_for("phone_tree.category_selection"), method="POST"
+        num_digits=1,
+        action=url_for("phone_tree.category_selection"),
+        method="POST",
     )
 
     gather.say(
@@ -38,7 +48,7 @@ def category_selection():
     res = VoiceResponse()
 
     # Get caller's phone number as session identifier
-    caller = request.form.get("From", "unknown")
+    call_sid = request.form.get("CallSid")
 
     # Map input to category
     category_map = {
@@ -62,13 +72,10 @@ def category_selection():
     # Create or update session
     session = SurveySession()
     session.set_category(category_key)
-    survey_sessions[caller] = session
+    survey_sessions[call_sid] = session
 
-    # Start recording
-    start_call_recording()
+    res.redirect(url_for("phone_tree.start_recording"), method="POST")
 
-    # Redirect to first question
-    res.redirect(url_for("phone_tree.questions_handler"), method="POST")
     return twiml_response(res)
 
 
@@ -78,8 +85,8 @@ def questions_handler():
     res = VoiceResponse()
 
     # Retrieve session
-    caller = request.form.get("From", "unknown")
-    session = survey_sessions.get(caller)
+    call_sid = request.form.get("CallSid") or request.args.get("CallSid")
+    session = survey_sessions.get(call_sid)
 
     if not session:
         res.say("Session expired. Starting over.")
@@ -95,7 +102,9 @@ def questions_handler():
 
     # Create gather for speech input
     gather = Gather(
-        input="speech", action=url_for("phone_tree.answer_handler"), method="POST"
+        input="speech",
+        action=url_for("phone_tree.answer_handler", CallSid=call_sid),
+        method="POST",
     )
 
     gather.say(current_question.text)
@@ -108,8 +117,8 @@ def questions_handler():
 def answer_handler():
     """Handle and confirm answers"""
     res = VoiceResponse()
-    caller = request.form.get("From", "unknown")
-    session = survey_sessions.get(caller)
+    call_sid = request.form.get("CallSid") or request.args.get("CallSid")
+    session = survey_sessions.get(call_sid)
 
     if not session:
         res.say("Session expired. Restarting.")
@@ -127,7 +136,7 @@ def answer_handler():
         # Confirm response
         gather = Gather(
             num_digits=1,
-            action=url_for("phone_tree.confirmation_handler"),
+            action=url_for("phone_tree.confirmation_handler", CallSid=call_sid),
             method="POST",
         )
 
@@ -138,7 +147,10 @@ def answer_handler():
         res.append(gather)
     else:
         res.say("Sorry, we couldn't understand your response.")
-        res.redirect(url_for("phone_tree.questions_handler"), method="POST")
+        res.redirect(
+            url_for("phone_tree.questions_handler", CallSid=call_sid),
+            method="POST",
+        )
 
     return twiml_response(res)
 
@@ -147,8 +159,8 @@ def answer_handler():
 def confirmation_handler():
     """Confirm or re-record response"""
     res = VoiceResponse()
-    caller = request.form.get("From", "unknown")
-    session = survey_sessions.get(caller)
+    call_sid = request.form.get("CallSid") or request.args.get("CallSid")
+    session = survey_sessions.get(call_sid)
 
     if not session:
         res.say("Session expired. Restarting.")
@@ -171,11 +183,51 @@ def confirmation_handler():
     return twiml_response(res)
 
 
-def process_survey_results(session):
+@ivr_phone_tree.route("/start-recording", methods=["POST"])
+def start_recording():
     """
-    Optional method to process and store survey results
-    In a real-world scenario, this would integrate with a database
+    Initiate call recording and redirect to the questions handler.
     """
-    print(f"Survey Category: {session.current_category}")
-    for question, response in session.responses.items():
-        print(f"Q: {question}\nA: {response}\n")
+    res = VoiceResponse()
+    call_sid = request.form.get("CallSid")
+
+    res.say("Please note that the call will be recorded.")
+
+    start_call_recording(call_sid=call_sid)
+
+    res.say("The call is now being recorded.")
+
+    # Redirect to the questions handler
+    res.redirect(
+        url_for("phone_tree.questions_handler", CallSid=call_sid), method="POST"
+    )
+
+    return twiml_response(res)
+
+
+@ivr_phone_tree.route("stop-recording", methods=["GET"])
+def stop_recording():
+    """
+    Twilio route to handle recording storage
+    """
+    recording_handler = RecordingHandler()
+
+    # Get recording URL from Twilio
+    recording_url = request.args.get("RecordingUrl")
+    session_id = request.form.get("CallSid") or request.args.get("CallSid")
+
+    # Retrieve survey session data
+    survey_session = survey_sessions.get(session_id, {})
+
+    if recording_url:
+        # Save recording
+        recording_path = recording_handler.save_recording(recording_url, session_id)
+
+        # Store metadata
+        recording_handler.store_recording_metadata(
+            session_id, recording_path, survey_session.responses
+        )
+
+    process_survey_results(survey_session)
+
+    return twiml_response(VoiceResponse())

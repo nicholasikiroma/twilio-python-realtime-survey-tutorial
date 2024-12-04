@@ -16,4 +16,6 @@ class SurveySession:
         self.current_question_index = 0
 
     def get_current_question(self):
-        return self.questions[self.current_question_index] if self.questions else None
+        if self.questions and 0 <= self.current_question_index < len(self.questions):
+            return self.questions[self.current_question_index]
+        return None
