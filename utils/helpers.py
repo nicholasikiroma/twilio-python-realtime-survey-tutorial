@@ -1,4 +1,3 @@
-import os
 from flask import Response, url_for
 from twilio.twiml.voice_response import VoiceResponse
 from twilio.rest import Client
@@ -45,13 +44,6 @@ def goodbye(res: VoiceResponse) -> VoiceResponse:
     res.pause(length=1)
     res.hangup()
 
-    # Attempt to stop recording
-    # res.record(
-    #     action=url_for("phone_tree.stop_recording"),
-    #     method="POST",
-    #     trim="trim-silence",
-    # )
-
     return res
 
 
@@ -82,6 +74,7 @@ def start_call_recording(call_sid: str):
         fallback_res = VoiceResponse()
         fallback_res.say("Sorry, there was a system error.")
         fallback_res.hangup()
+        return fallback_res
 
 
 def return_home() -> Response:

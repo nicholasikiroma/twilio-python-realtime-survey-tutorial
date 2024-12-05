@@ -1,4 +1,3 @@
-import os
 from flask import Flask
 
 from .routes import ivr_phone_tree
